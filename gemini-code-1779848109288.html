@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Quadratic Graphing</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --primary: #4361ee;
+            --primary-hover: #3a53d0;
+            --success: #2a9d8f;
+            --danger: #e63946;
+            --text-main: #2b2d42;
+            --text-muted: #6c757d;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 { margin-top: 0; font-size: 28px; }
+        
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: var(--text-muted);
+        }
+
+        .instructions {
+            background-color: #eef2ff;
+            color: #3b5bdb;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 15px;
+            margin-bottom: 20px;
+        }
+
+        #equation-display {
+            font-size: 32px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            margin: 20px 0;
+            color: var(--primary);
+            letter-spacing: 1px;
+        }
+
+        .canvas-container {
+            position: relative;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            background-color: white;
+            border: 2px solid #ced4da;
+            border-radius: 8px;
+            cursor: crosshair;
+        }
+
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: white;
+        }
+
+        #submit-btn { background-color: var(--success); }
+        #submit-btn:hover { background-color: #21867a; }
+        
+        #undo-btn { background-color: #fca311; color: #000; }
+        #undo-btn:hover { background-color: #e08e0b; }
+
+        #next-btn { background-color: var(--primary); }
+        #next-btn:hover { background-color: var(--primary-hover); }
+
+        #feedback-container {
+            margin-top: 20px;
+            text-align: left;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .feedback-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .math-step {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: block;
+            margin: 5px 0;
+            border-left: 3px solid var(--primary);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header-info">
+            <span>Quadratic Graphing Mastery</span>
+            <span id="streak-display">Streak: 0 🔥</span>
+        </div>
+
+        <div class="instructions">
+            <strong>1.</strong> Click to plot the <strong>Vertex</strong>.<br>
+            <strong>2.</strong> Click to plot a <strong>Second Point</strong> to set the width.
+        </div>
+        
+        <div id="equation-display"></div>
+        
+        <div class="canvas-container">
+            <canvas id="graphCanvas" width="400" height="400"></canvas>
+        </div>
+        
+        <div class="btn-group">
+            <button id="undo-btn" onclick="undoPoint()">Undo Point</button>
+            <button id="submit-btn" onclick="gradeGraph()">Submit & Grade</button>
+            <button id="next-btn" onclick="resetQuiz()">Next Question</button>
+        </div>
+        
+        <div id="feedback-container">
+            <div class="feedback-title" id="feedback-title"></div>
+            <div id="feedback-body"></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('graphCanvas');
+        const ctx = canvas.getContext('2d');
+        const scale = 20; 
+        const originX = canvas.width / 2;
+        const originY = canvas.height / 2;
+
+        let actualA, actualH, actualK, actualB, actualC;
+        let userVertex = null;
+        let userPoint = null;
+        let hoverPoint = null;
+        let streak = 0;
+        let isGraded = false;
+
+        resetQuiz();
+
+        // Hover Effect (Ghost snapping)
+        canvas.addEventListener('mousemove', function(event) {
+            if (isGraded || (userVertex && userPoint)) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+
+            const graphX = Math.round((mouseX - originX) / scale);
+            const graphY = Math.round((originY - mouseY) / scale);
+
+            hoverPoint = { x: graphX, y: graphY };
+            redrawAll();
+        });
+
+        canvas.addEventListener('mouseleave', function() {
+            hoverPoint = null;
+            redrawAll();
+        });
+
+        // Click Listener
+        canvas.addEventListener('click', function() {
+            if (isGraded || !hoverPoint) return;
+
+            if (!userVertex) {
+                userVertex = { ...hoverPoint };
+            } else if (!userPoint) {
+                if (hoverPoint.x === userVertex.x) return; // Prevent vertical line
+                userPoint = { ...hoverPoint };
+            }
+            redrawAll();
+        });
+
+        function undoPoint() {
+            if (isGraded) return;
+            if (userPoint) userPoint = null;
+            else if (userVertex) userVertex = null;
+            redrawAll();
+        }
+
+        function resetQuiz() {
+            userVertex = null;
+            userPoint = null;
+            hoverPoint = null;
+            isGraded = false;
+            document.getElementById('feedback-container').style.display = "none";
+            generateEquation();
+            redrawAll();
+        }
+
+        function generateEquation() {
+            actualH = Math.floor(Math.random() * 9) - 4; // Keep vertex near center
+            actualK = Math.floor(Math.random() * 9) - 4;
+            
+            do { actualA = Math.floor(Math.random() * 5) - 2; } while (actualA === 0);
+
+            actualB = -2 * actualA * actualH;
+            actualC = (actualA * Math.pow(actualH, 2)) + actualK;
+
+            document.getElementById('equation-display').innerText = buildMathString(actualA, actualB, actualC);
+        }
+
+        function buildMathString(a, b, c) {
+            let str = "y = ";
+            
+            if (a === -1) str += "-x²";
+            else if (a === 1) str += "x²";
+            else str += `${a}x²`;
+
+            if (b !== 0) {
+                if (b === 1) str += " + x";
+                else if (b === -1) str += " - x";
+                else if (b > 0) str += ` + ${b}x`;
+                else str += ` - ${Math.abs(b)}x`;
+            }
+
+            if (c !== 0) {
+                if (c > 0) str += ` + ${c}`;
+                else str += ` - ${Math.abs(c)}`;
+            }
+            return str;
+        }
+
+        function redrawAll() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            
+            if (userVertex) drawPoint(userVertex.x, userVertex.y, '#4361ee', 6);
+            if (userPoint) drawPoint(userPoint.x, userPoint.y, '#e63946', 6);
+            if (userVertex && userPoint) drawUserParabola();
+            
+            // Draw ghost hover point
+            if (hoverPoint && !isGraded && (!userVertex || !userPoint)) {
+                if (!userVertex || hoverPoint.x !== userVertex.x) {
+                    drawPoint(hoverPoint.x, hoverPoint.y, 'rgba(0, 0, 0, 0.3)', 5);
+                }
+            }
+        }
+
+        function drawGrid() {
+            ctx.lineWidth = 1;
+            ctx.font = "10px Arial";
+            ctx.fillStyle = "#adb5bd";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            for (let i = -10; i <= 10; i++) {
+                let px = originX + (i * scale);
+                let py = originY - (i * scale);
+                
+                // Lines
+                ctx.strokeStyle = i === 0 ? '#000' : '#e9ecef';
+                ctx.lineWidth = i === 0 ? 2 : 1;
+                
+                ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, canvas.height); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(canvas.width, py); ctx.stroke();
+
+                // Number Labels
+                if (i !== 0 && i % 2 === 0) {
+                    ctx.fillText(i, px, originY + 12);
+                    ctx.fillText(i, originX - 12, py);
+                }
+            }
+        }
+
+        function drawPoint(x, y, color, size) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(originX + (x * scale), originY - (y * scale), size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawUserParabola() {
+            let userA = (userPoint.y - userVertex.y) / Math.pow((userPoint.x - userVertex.x), 2);
+            plotCurve(userA, userVertex.x, userVertex.y, '#4361ee', 2);
+        }
+
+        function plotCurve(a, h, k, color, width, isDashed = false) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            if (isDashed) ctx.setLineDash([5, 5]);
+            else ctx.setLineDash([]);
+            
+            ctx.beginPath();
+            for (let px = 0; px <= canvas.width; px++) {
+                let graphX = (px - originX) / scale;
+                let graphY = (a * Math.pow((graphX - h), 2)) + k;
+                let py = originY - (graphY * scale);
+                if (px === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset
+        }
+
+        function gradeGraph() {
+            if (isGraded) return;
+            if (!userVertex || !userPoint) {
+                alert("Please plot both the vertex and a second point first!");
+                return;
+            }
+
+            isGraded = true;
+            let userA = (userPoint.y - userVertex.y) / Math.pow((userPoint.x - userVertex.x), 2);
+            let container = document.getElementById('feedback-container');
+            let title = document.getElementById('feedback-title');
+            let body = document.getElementById('feedback-body');
+            
+            container.style.display = "block";
+
+            if (userVertex.x === actualH && userVertex.y === actualK && userA.toFixed(2) === actualA.toFixed(2)) {
+                streak++;
+                document.getElementById('streak-display').innerText = `Streak: ${streak} 🔥`;
+                container.style.backgroundColor = "#d8f3dc";
+                title.style.color = "#1b4332";
+                title.innerText = "✅ Excellent Work!";
+                body.innerHTML = `You correctly identified the vertex at <strong>(${actualH}, ${actualK})</strong> and the 'a' value of <strong>${actualA}</strong>.`;
+            } else {
+                streak = 0;
+                document.getElementById('streak-display').innerText = `Streak: ${streak} 🔥`;
+                container.style.backgroundColor = "#ffe5d9";
+                title.style.color = "#9d0208";
+                title.innerText = "❌ Not Quite. Let's break it down:";
+                
+                // Generate step-by-step math explanation
+                let topB = actualB === 0 ? "0" : (actualB > 0 ? `-${actualB}` : `${Math.abs(actualB)}`);
+                let bottomA = `2(${actualA})`;
+                
+                body.innerHTML = `
+                    The original equation is <strong>${buildMathString(actualA, actualB, actualC)}</strong>.<br><br>
+                    <strong>Step 1: Find the x-coordinate of the vertex (x = -b / 2a)</strong>
+                    <span class="math-step">x = ${topB} / ${bottomA}</span>
+                    <span class="math-step">x = ${actualH}</span>
+                    <br>
+                    <strong>Step 2: Plug x back in to find y</strong>
+                    <span class="math-step">y = ${actualA}(${actualH})² + ${actualB}(${actualH}) + ${actualC}</span>
+                    <span class="math-step">y = ${actualK}</span>
+                    <br>
+                    The correct vertex is <strong>(${actualH}, ${actualK})</strong>. The correct graph is shown in dashed green.
+                `;
+                
+                plotCurve(actualA, actualH, actualK, '#2a9d8f', 3, true);
+                drawPoint(actualH, actualK, '#2a9d8f', 5);
+            }
+        }
+    </script>
+</body>
+</html>
